@@ -6,6 +6,8 @@ Run with:  uvicorn app.main:app --env-file .env
 from __future__ import annotations
 
 import logging
+import re
+import secrets
 import shutil
 import subprocess
 import threading
@@ -14,7 +16,7 @@ from datetime import date
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -26,6 +28,8 @@ from .xenocanto import XenoCantoClient
 
 log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
+DEVICE_COOKIE = "birding_device"
+DEVICE_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 ALLOWED_SUFFIXES = {".wav", ".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".webm", ".mp4"}
 
 
@@ -56,6 +60,12 @@ def _to_wav(src: Path) -> Path | None:
     return dst
 
 
+def device_id(request: Request) -> str:
+    """Anonymous id for the phone or browser, so each person sees only their own
+    recordings without creating an account. Set by the middleware in create_app."""
+    return request.state.device_id
+
+
 def create_app(
     settings: Settings | None = None,
     identifier: Identifier | None = None,
@@ -80,6 +90,24 @@ def create_app(
 
     app = FastAPI(title="BirdingAIApp", lifespan=lifespan)
 
+    @app.middleware("http")
+    async def assign_device(request: Request, call_next):
+        current = request.cookies.get(DEVICE_COOKIE, "")
+        is_new = not DEVICE_ID_RE.fullmatch(current)
+        request.state.device_id = secrets.token_hex(16) if is_new else current
+        response = await call_next(request)
+        if is_new:
+            response.set_cookie(
+                DEVICE_COOKIE,
+                request.state.device_id,
+                max_age=10 * 365 * 24 * 3600,
+                httponly=True,
+                samesite="lax",
+                secure=request.url.scheme == "https"
+                or request.headers.get("x-forwarded-proto") == "https",
+            )
+        return response
+
     @app.get("/api/status")
     def status() -> dict[str, Any]:
         return {
@@ -94,6 +122,7 @@ def create_app(
         latitude: Annotated[float | None, Form(ge=-90, le=90)] = None,
         longitude: Annotated[float | None, Form(ge=-180, le=180)] = None,
         recorded_on: Annotated[date | None, Form()] = None,
+        device: str = Depends(device_id),
     ) -> dict[str, Any]:
         if (latitude is None) != (longitude is None):
             raise HTTPException(422, "Send both latitude and longitude, or neither.")
@@ -102,6 +131,7 @@ def create_app(
             raise HTTPException(415, f"Unsupported file type {suffix!r}.")
 
         recording_id = db.add_recording(
+            device_id=device,
             recorded_on=recorded_on.isoformat() if recorded_on else None,
             latitude=latitude,
             longitude=longitude,
@@ -118,7 +148,7 @@ def create_app(
                 out.write(chunk)
         if written > max_bytes or written == 0:
             path.unlink(missing_ok=True)
-            db.delete_recording(recording_id)
+            db.delete_recording(recording_id, device)
             if written == 0:
                 raise HTTPException(400, "The audio file is empty.")
             raise HTTPException(413, f"Audio files are limited to {settings.max_upload_mb:g} MB.")
@@ -127,7 +157,7 @@ def create_app(
             converted = _to_wav(path)
             if converted is None or not _readable(converted):
                 path.unlink(missing_ok=True)
-                db.delete_recording(recording_id)
+                db.delete_recording(recording_id, device)
                 raise HTTPException(
                     415, "Could not read this audio. Try WAV, MP3, FLAC or OGG (or install ffmpeg)."
                 )
@@ -150,40 +180,42 @@ def create_app(
             if sightings is not None:
                 nearby = {d.scientific_name: d.scientific_name in sightings for d in detections}
         db.add_detections(recording_id, detections, nearby)
-        result = db.get_recording(recording_id)
+        result = db.get_recording(recording_id, device)
         assert result is not None
         result["other_sounds"] = other_sounds
         return result
 
     @app.get("/api/recordings")
-    def list_recordings(limit: int = 50) -> list[dict[str, Any]]:
-        return db.list_recordings(limit=max(1, min(limit, 500)))
+    def list_recordings(
+        limit: int = 50, device: str = Depends(device_id)
+    ) -> list[dict[str, Any]]:
+        return db.list_recordings(device, limit=max(1, min(limit, 500)))
 
     @app.get("/api/recordings/{recording_id}")
-    def get_recording(recording_id: int) -> dict[str, Any]:
-        rec = db.get_recording(recording_id)
+    def get_recording(recording_id: int, device: str = Depends(device_id)) -> dict[str, Any]:
+        rec = db.get_recording(recording_id, device)
         if rec is None:
             raise HTTPException(404, "Recording not found.")
         return rec
 
     @app.get("/api/recordings/{recording_id}/audio")
-    def get_audio(recording_id: int) -> FileResponse:
-        name = db.audio_file(recording_id)
+    def get_audio(recording_id: int, device: str = Depends(device_id)) -> FileResponse:
+        name = db.audio_file(recording_id, device)
         if not name or not (settings.audio_dir / name).is_file():
             raise HTTPException(404, "Audio not found.")
         return FileResponse(settings.audio_dir / name)
 
     @app.delete("/api/recordings/{recording_id}", status_code=204)
-    def delete_recording(recording_id: int) -> None:
-        name = db.audio_file(recording_id)
-        if not db.delete_recording(recording_id):
+    def delete_recording(recording_id: int, device: str = Depends(device_id)) -> None:
+        name = db.audio_file(recording_id, device)
+        if not db.delete_recording(recording_id, device):
             raise HTTPException(404, "Recording not found.")
         if name:
             (settings.audio_dir / name).unlink(missing_ok=True)
 
     @app.get("/api/life-list")
-    def life_list() -> list[dict[str, Any]]:
-        return db.life_list()
+    def life_list(device: str = Depends(device_id)) -> list[dict[str, Any]]:
+        return db.life_list(device)
 
     @app.get("/api/species/{scientific_name}/recordings")
     def reference_recordings(scientific_name: str) -> dict[str, Any]:

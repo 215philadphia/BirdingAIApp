@@ -13,6 +13,7 @@ from .identifier import Detection
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS recordings (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id    TEXT NOT NULL DEFAULT '',  -- anonymous id of the phone/browser
     created_at   TEXT NOT NULL,
     recorded_on  TEXT,
     latitude     REAL,
@@ -33,6 +34,7 @@ CREATE TABLE IF NOT EXISTS detections (
     reported_nearby INTEGER  -- 1/0 from eBird, NULL when eBird was not checked
 );
 
+CREATE INDEX IF NOT EXISTS idx_recordings_device ON recordings(device_id);
 CREATE INDEX IF NOT EXISTS idx_detections_recording ON detections(recording_id);
 CREATE INDEX IF NOT EXISTS idx_detections_species ON detections(scientific_name);
 """
@@ -44,6 +46,11 @@ class Database:
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
+        columns = {r[1] for r in self._conn.execute("PRAGMA table_info(recordings)")}
+        if columns and "device_id" not in columns:  # database from before device_id existed
+            self._conn.execute(
+                "ALTER TABLE recordings ADD COLUMN device_id TEXT NOT NULL DEFAULT ''"
+            )
         self._conn.executescript(SCHEMA)
         self._lock = threading.Lock()
 
@@ -53,6 +60,7 @@ class Database:
     def add_recording(
         self,
         *,
+        device_id: str,
         recorded_on: str | None,
         latitude: float | None,
         longitude: float | None,
@@ -60,9 +68,10 @@ class Database:
     ) -> int:
         with self._lock, self._conn:
             cur = self._conn.execute(
-                "INSERT INTO recordings (created_at, recorded_on, latitude, longitude, original_filename)"
-                " VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO recordings (device_id, created_at, recorded_on, latitude, longitude,"
+                " original_filename) VALUES (?, ?, ?, ?, ?, ?)",
                 (
+                    device_id,
                     datetime.now(timezone.utc).isoformat(timespec="seconds"),
                     recorded_on,
                     latitude,
@@ -100,15 +109,18 @@ class Database:
                 ],
             )
 
-    def get_recording(self, recording_id: int) -> dict[str, Any] | None:
-        row = self._conn.execute("SELECT * FROM recordings WHERE id = ?", (recording_id,)).fetchone()
+    def get_recording(self, recording_id: int, device_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT * FROM recordings WHERE id = ? AND device_id = ?", (recording_id, device_id)
+        ).fetchone()
         if row is None:
             return None
         return self._with_detections(dict(row))
 
-    def list_recordings(self, limit: int = 50) -> list[dict[str, Any]]:
+    def list_recordings(self, device_id: str, limit: int = 50) -> list[dict[str, Any]]:
         rows = self._conn.execute(
-            "SELECT * FROM recordings ORDER BY id DESC LIMIT ?", (limit,)
+            "SELECT * FROM recordings WHERE device_id = ? ORDER BY id DESC LIMIT ?",
+            (device_id, limit),
         ).fetchall()
         return [self._with_detections(dict(r)) for r in rows]
 
@@ -120,20 +132,24 @@ class Database:
         ).fetchall()
         rec["detections"] = [_detection_dict(dict(r)) for r in rows]
         rec["has_audio"] = bool(rec.pop("audio_file", None))
+        rec.pop("device_id", None)
         return rec
 
-    def audio_file(self, recording_id: int) -> str | None:
+    def audio_file(self, recording_id: int, device_id: str) -> str | None:
         row = self._conn.execute(
-            "SELECT audio_file FROM recordings WHERE id = ?", (recording_id,)
+            "SELECT audio_file FROM recordings WHERE id = ? AND device_id = ?",
+            (recording_id, device_id),
         ).fetchone()
         return row["audio_file"] if row else None
 
-    def delete_recording(self, recording_id: int) -> bool:
+    def delete_recording(self, recording_id: int, device_id: str) -> bool:
         with self._lock, self._conn:
-            cur = self._conn.execute("DELETE FROM recordings WHERE id = ?", (recording_id,))
+            cur = self._conn.execute(
+                "DELETE FROM recordings WHERE id = ? AND device_id = ?", (recording_id, device_id)
+            )
             return cur.rowcount > 0
 
-    def life_list(self) -> list[dict[str, Any]]:
+    def life_list(self, device_id: str) -> list[dict[str, Any]]:
         """Every species identified at least once, with when it was first heard."""
         rows = self._conn.execute(
             """
@@ -144,9 +160,11 @@ class Database:
                    MIN(r.created_at)   AS first_heard,
                    MAX(r.created_at)   AS last_heard
             FROM detections d JOIN recordings r ON r.id = d.recording_id
+            WHERE r.device_id = ?
             GROUP BY d.scientific_name
             ORDER BY first_heard DESC
-            """
+            """,
+            (device_id,),
         ).fetchall()
         return [dict(r) for r in rows]
 

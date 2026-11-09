@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="0" fill="#2f6b4f"/>
+  <!-- bird -->
+  <path fill="#f5f3ee" d="M150 300c0-70 52-128 122-128 28 0 50 9 66 24l52-6-36 30c4 12 6 24 6 38 0 74-60 122-136 122-30 0-56-6-78-18l-50 18 22-44c-2-12 32-36 32-36z"/>
+  <circle cx="318" cy="222" r="11" fill="#2f6b4f"/>
+  <!-- sound waves -->
+  <path fill="none" stroke="#f5f3ee" stroke-width="18" stroke-linecap="round" d="M402 250c14 16 14 44 0 60M432 226c28 32 28 96 0 128"/>
+</svg>

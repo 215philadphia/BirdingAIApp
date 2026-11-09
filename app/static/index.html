@@ -2,8 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Birding AI</title>
+  <!-- iPhone: "Share > Add to Home Screen" opens the app full screen with this icon -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Birding AI">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#f5f3ee" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121714" media="(prefers-color-scheme: dark)">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -24,7 +34,8 @@
           <span class="dot"></span><span id="record-label">Start recording</span>
         </button>
         <div id="timer" class="timer" hidden>0:00</div>
-        <p class="hint">Hold your phone toward the bird. 10–30 seconds works best.</p>
+        <p class="hint">Point the bottom of your phone toward the bird and keep the screen on.
+          10–30 seconds works best.</p>
 
         <div class="divider"><span>or</span></div>
 

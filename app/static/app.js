@@ -46,10 +46,30 @@ requestLocation();
 // ---------- recording ----------
 let recorder = null;
 let timerId = null;
+let wakeLock = null;
+
+// Keep the screen on while recording: iPhones stop the microphone when the screen locks.
+async function keepScreenOn(on) {
+  try {
+    if (on && "wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen");
+    if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch { /* not supported or not allowed; recording still works */ }
+}
+
+// If the user switches apps or locks the phone mid-recording, identify what was captured.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && recorder && recorder.state === "recording") recorder.stop();
+});
 
 $("#record-btn").addEventListener("click", async () => {
   if (recorder && recorder.state === "recording") { recorder.stop(); return; }
   hideError();
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    showError(window.isSecureContext
+      ? "This browser can't record audio. Update iOS/Safari, or upload a file instead."
+      : "Recording needs a secure (https://) address. Open the app's https link, or upload a file instead.");
+    return;
+  }
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -66,7 +86,9 @@ $("#record-btn").addEventListener("click", async () => {
   recorder.onstop = async () => {
     stream.getTracks().forEach((t) => t.stop());
     clearInterval(timerId);
+    keepScreenOn(false);
     setRecordingUi(false);
+    if (!chunks.length) { showError("Nothing was recorded. Please try again."); return; }
     try {
       const wav = await toWav(new Blob(chunks, { type: recorder.mimeType }));
       await identify(wav, "recording.wav");
@@ -74,7 +96,8 @@ $("#record-btn").addEventListener("click", async () => {
       showError(`Could not process the recording: ${err.message}`);
     }
   };
-  recorder.start();
+  recorder.start(1000); // deliver data every second so a cut-short recording isn't lost
+  keepScreenOn(true);
   setRecordingUi(true);
   const started = Date.now();
   timerId = setInterval(() => {

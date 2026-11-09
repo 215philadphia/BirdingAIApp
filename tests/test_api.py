@@ -179,3 +179,40 @@ def test_ebird_failure_does_not_break_identification(tmp_path, identifier):
 def test_serves_web_page(client):
     resp = client.get("/")
     assert resp.status_code == 200 and "Birding AI" in resp.text
+
+
+def test_each_device_sees_only_its_own_recordings(client):
+    mine = upload(client).json()
+    assert client.cookies.get("birding_device")
+
+    client.cookies.clear()  # a different phone
+    assert client.get("/api/recordings").json() == []
+    assert client.get("/api/life-list").json() == []
+    assert client.get(f"/api/recordings/{mine['id']}").status_code == 404
+    assert client.get(f"/api/recordings/{mine['id']}/audio").status_code == 404
+    assert client.delete(f"/api/recordings/{mine['id']}").status_code == 404
+
+
+def test_ignores_malformed_device_cookie(client):
+    client.cookies.set("birding_device", "../../etc/passwd")
+    resp = client.get("/api/recordings")
+    assert resp.status_code == 200
+    assert len(resp.cookies.get("birding_device", "")) == 32
+
+
+def test_device_column_added_to_old_database(tmp_path):
+    import sqlite3
+
+    from app.database import Database
+
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE recordings (id INTEGER PRIMARY KEY, created_at TEXT NOT NULL, recorded_on TEXT,"
+        " latitude REAL, longitude REAL, original_filename TEXT, audio_file TEXT)"
+    )
+    conn.commit()
+    conn.close()
+    db = Database(path)
+    assert db.add_recording(device_id="a" * 32, recorded_on=None, latitude=None,
+                            longitude=None, original_filename=None) == 1
