@@ -29,14 +29,26 @@ Open http://localhost:8000. The first start downloads the BirdNET models (about 
 
 Safari only lets a web page use the microphone over **HTTPS**, so the phone needs an `https://` address for the app. There are two ways to get one.
 
-**Option A: tunnel from your computer (free, about 2 minutes).** The app runs on your computer and a tunnel gives it a temporary public HTTPS address. It works only while your computer is on, and the address changes each time.
+**Option A: tunnel from your computer (free, about 5 minutes).** The app runs on your computer and a free Cloudflare tunnel gives it a temporary public HTTPS address. It works only while your computer is on, and the address changes each time.
 
-```sh
-uvicorn app.main:app --env-file .env          # terminal 1
-cloudflared tunnel --url http://localhost:8000 # terminal 2; install from developers.cloudflare.com
-```
+1. Install Python 3.11–3.13 from python.org, and `cloudflared`:
+   - Mac: `brew install cloudflared`
+   - Windows: `winget install --id Cloudflare.cloudflared`
+2. Download this repository (green **Code** button → **Download ZIP**, or `git clone`), then in a terminal inside the folder:
 
-Open the `https://….trycloudflare.com` address it prints in Safari on your iPhone.
+   ```sh
+   # Mac / Linux
+   python3 -m venv .venv && source .venv/bin/activate
+   # Windows (PowerShell)
+   py -m venv .venv; .venv\Scripts\Activate.ps1
+
+   pip install -r requirements.txt
+   python run_phone.py
+   ```
+
+3. It prints an `https://….trycloudflare.com` address and a **QR code**. Point the iPhone Camera at the QR code and tap the link. Press Ctrl+C to stop.
+
+Next time, just activate the environment and run `python run_phone.py` again.
 
 **Option B: host it online (always on).** Deploy the included `Dockerfile` to a host that supports Docker, such as Render, Railway or Fly.io:
 
