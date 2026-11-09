@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Birding AI</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Birding AI</h1>
+    <p class="tagline">Record a bird call and find out who's singing.</p>
+    <nav class="tabs" role="tablist">
+      <button role="tab" class="tab active" data-view="identify">Identify</button>
+      <button role="tab" class="tab" data-view="history">History</button>
+      <button role="tab" class="tab" data-view="lifelist">Life list</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="view-identify" class="view active">
+      <div class="card capture">
+        <button id="record-btn" class="record" aria-live="polite">
+          <span class="dot"></span><span id="record-label">Start recording</span>
+        </button>
+        <div id="timer" class="timer" hidden>0:00</div>
+        <p class="hint">Hold your phone toward the bird. 10–30 seconds works best.</p>
+
+        <div class="divider"><span>or</span></div>
+
+        <label class="upload">
+          <input id="file-input" type="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a">
+          Upload a recording
+        </label>
+
+        <div class="options">
+          <label class="check">
+            <input id="use-location" type="checkbox" checked>
+            Use my location (more accurate: only birds found near you)
+          </label>
+          <div id="location-status" class="muted small"></div>
+          <label class="date">Recorded on <input id="recorded-on" type="date"></label>
+        </div>
+      </div>
+
+      <div id="busy" class="card busy" hidden>
+        <div class="spinner"></div> Listening for birds…
+      </div>
+      <div id="error" class="card error" role="alert" hidden></div>
+      <div id="results"></div>
+    </section>
+
+    <section id="view-history" class="view">
+      <div id="history"></div>
+    </section>
+
+    <section id="view-lifelist" class="view">
+      <div id="lifelist"></div>
+    </section>
+  </main>
+
+  <footer class="muted small">
+    Identification by <a href="https://birdnet.cornell.edu/" target="_blank" rel="noopener">BirdNET</a>
+    (Cornell Lab of Ornithology &amp; TU Chemnitz).
+    <span id="footer-ebird" hidden>Local sightings from <a href="https://ebird.org" target="_blank" rel="noopener">eBird</a>.</span>
+    <span id="footer-xc" hidden>Reference sounds from <a href="https://xeno-canto.org" target="_blank" rel="noopener">xeno-canto</a>.</span>
+  </footer>
+
+  <template id="detection-tpl">
+    <article class="card detection">
+      <div class="det-head">
+        <div>
+          <h3 class="common"></h3>
+          <p class="scientific"></p>
+        </div>
+        <div class="score"></div>
+      </div>
+      <div class="bar"><div class="fill"></div></div>
+      <p class="meta small muted"></p>
+      <div class="actions">
+        <button class="secondary examples-btn" hidden>Hear examples</button>
+      </div>
+      <div class="examples"></div>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
