@@ -25,6 +25,10 @@ uvicorn app.main:app --env-file .env
 
 Open http://localhost:8000. The first start downloads the BirdNET models (about 120 MB, from zenodo.org) to `~/.local/share/birdnet`.
 
+## Use it in the Claude app (no server)
+
+`artifact/` holds a version that runs BirdNET entirely in the browser, published as a claude.ai page: https://claude.ai/artifact/1S1gqJsxj9bvctSwzCDFF4. It works by uploading a recording, such as a Voice Memo. See [artifact/README.md](artifact/README.md).
+
 ## Use it on your iPhone
 
 Safari only lets a web page use the microphone over **HTTPS**, so the phone needs an `https://` address for the app. There are two ways to get one.

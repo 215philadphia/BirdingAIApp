@@ -1,0 +1,715 @@
+<title>Birding AI</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow field-notebook column; the recording's spectrogram is the centrepiece of each result. */
+:root {
+  --bg: #e9eeea;
+  --surface: #f9fbf9;
+  --ink: #15211b;
+  --muted: #56675e;
+  --line: #d3ddd6;
+  --accent: #1d6b57;
+  --accent-ink: #ffffff;
+  --accent-soft: #d6eae2;
+  --mark: #b7791f;
+  --danger: #a33a2a;
+  --spec-low: #f4f7f5;
+  --spec-high: #0f3d31;
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Instrument Sans", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1613; --surface: #17211c; --ink: #e3ece7; --muted: #95a89e; --line: #2a3832;
+    --accent: #5cc4a3; --accent-ink: #062018; --accent-soft: #1d3a31; --mark: #e0a84a; --danger: #f08a78;
+    --spec-low: #121b17; --spec-high: #9fe8cf; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1613; --surface: #17211c; --ink: #e3ece7; --muted: #95a89e; --line: #2a3832;
+  --accent: #5cc4a3; --accent-ink: #062018; --accent-soft: #1d3a31; --mark: #e0a84a; --danger: #f08a78;
+  --spec-low: #121b17; --spec-high: #9fe8cf; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 16px/1.5 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 640px; margin: 0 auto; display: grid; gap: 16px; }
+.stack { display: grid; gap: 16px; min-width: 0; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+h1 { font-size: 2rem; letter-spacing: -0.02em; line-height: 1.1; }
+h2 { font-size: 1.15rem; }
+p { margin: 0; }
+a { color: var(--accent); }
+button, select, input { font: inherit; color: inherit; }
+button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.muted { color: var(--muted); }
+.small { font-size: 0.875rem; }
+.data { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-size: 0.85em; }
+
+header { display: grid; gap: 6px; }
+.lede { color: var(--muted); max-width: 52ch; }
+
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.tab {
+  background: none; border: 0; padding: 10px 12px; cursor: pointer; color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500;
+}
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.count { font-family: var(--font-data); font-size: 0.8em; margin-left: 4px; color: var(--muted); }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 14px; }
+
+.pick {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 56px; padding: 14px 20px; border-radius: 999px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 1.05rem; border: 0;
+}
+.pick input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.pick:focus-within { outline: 3px solid var(--accent); outline-offset: 3px; }
+.pick[aria-disabled="true"] { opacity: 0.55; pointer-events: none; }
+.steps { margin: 0; padding-left: 20px; color: var(--muted); display: grid; gap: 2px; }
+
+.fields { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+select, input[type="date"], input[type="number"] {
+  width: 100%; min-width: 0; font-size: 16px; padding: 9px 10px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--bg);
+}
+.coords { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 420px) { .fields { grid-template-columns: 1fr; } }
+
+.status { display: grid; gap: 8px; }
+.status-line { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9rem; }
+.meter { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.meter > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+.error { color: var(--danger); font-weight: 500; }
+
+.recording { display: grid; gap: 10px; }
+.rec-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.rec-head h2 { min-width: 0; overflow-wrap: anywhere; }
+.spec-box { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--spec-low); }
+canvas.spec { display: block; width: 100%; height: 132px; cursor: pointer; }
+.spec-band { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--mark) 14%, transparent); border-inline: 2px solid var(--mark); pointer-events: none; }
+.spec-head { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); opacity: 0.7; pointer-events: none; }
+.axis { display: flex; justify-content: space-between; }
+audio { width: 100%; height: 40px; }
+
+.birds { display: grid; gap: 8px; }
+.bird {
+  display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center;
+  padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg);
+  text-align: left; cursor: pointer; width: 100%;
+}
+.bird[aria-pressed="true"] { border-color: var(--mark); box-shadow: inset 0 0 0 1px var(--mark); }
+.bird h3 { font-size: 1.05rem; }
+.sci { font-style: italic; color: var(--muted); font-size: 0.9rem; }
+.pct { font-family: var(--font-data); font-weight: 500; font-size: 1.05rem; }
+.bar { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); }
+.when { grid-column: 1 / -1; font-size: 0.85rem; color: var(--muted); }
+.note { font-size: 0.9rem; color: var(--muted); }
+
+.life { display: grid; gap: 0; }
+.life-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.life-row:last-child { border-bottom: 0; }
+.life-row .meta { text-align: right; font-size: 0.85rem; color: var(--muted); }
+.history { display: grid; gap: 10px; }
+.entry { display: grid; gap: 4px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); }
+.entry-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.linkish { background: none; border: 0; padding: 4px 0; color: var(--danger); cursor: pointer; font-size: 0.85rem; font-weight: 500; }
+.confirm { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 0.85rem; }
+.btn-quiet { background: none; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer; font-size: 0.85rem; }
+.empty { text-align: center; color: var(--muted); padding: 20px 8px; }
+footer { font-size: 0.8rem; color: var(--muted); display: grid; gap: 4px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Birding AI</h1>
+    <p class="lede">Choose a recording of a bird call and BirdNET names the species. It runs on this device, so your audio is never uploaded.</p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button class="tab" role="tab" id="tab-identify" aria-selected="true" aria-controls="view-identify">Identify</button>
+    <button class="tab" role="tab" id="tab-life" aria-selected="false" aria-controls="view-life">Life list<span class="count" id="life-count"></span></button>
+  </nav>
+
+  <section id="view-identify" role="tabpanel" aria-labelledby="tab-identify" class="stack">
+    <div class="panel">
+      <label class="pick" id="pick">
+        <input type="file" id="file" accept="audio/*,.m4a,.mp3,.wav,.aac,.flac,.ogg,.caf">
+        Choose a recording
+      </label>
+      <ol class="steps small">
+        <li>On iPhone, record the bird in <b>Voice Memos</b>.</li>
+        <li>Tap the recording's <b>•••</b> menu, then <b>Save to Files</b>.</li>
+        <li>Come back here and choose it. 10 to 60 seconds works best.</li>
+      </ol>
+      <div class="fields">
+        <div class="field">
+          <label for="region">Where you heard it</label>
+          <select id="region"></select>
+        </div>
+        <div class="field">
+          <label for="date">Date</label>
+          <input type="date" id="date">
+        </div>
+      </div>
+      <div class="coords" id="coords" hidden>
+        <div class="field"><label for="lat">Latitude</label><input type="number" id="lat" step="any" min="-90" max="90" placeholder="39.95" inputmode="decimal"></div>
+        <div class="field"><label for="lon">Longitude</label><input type="number" id="lon" step="any" min="-180" max="180" placeholder="-75.16" inputmode="decimal"></div>
+      </div>
+      <p class="small muted" id="region-hint">Choosing a place limits results to birds BirdNET expects there at that time of year, which makes it more accurate.</p>
+      <div class="status" id="status" hidden>
+        <div class="status-line"><span id="status-text"></span><span class="data" id="status-num"></span></div>
+        <div class="meter"><i id="status-bar"></i></div>
+      </div>
+      <p class="error" id="error" role="alert" hidden></p>
+    </div>
+
+    <div class="panel recording" id="result" hidden>
+      <div class="rec-head">
+        <h2 id="rec-name"></h2>
+        <span class="small muted data" id="rec-meta"></span>
+      </div>
+      <div class="spec-box" id="spec-box">
+        <canvas class="spec" id="spec" aria-label="Spectrogram of the recording. Tap to play from that point."></canvas>
+        <div class="spec-band" id="spec-band" hidden></div>
+        <div class="spec-head" id="spec-head" hidden></div>
+      </div>
+      <div class="axis small muted data"><span>0:00</span><span>0–15 kHz</span><span id="rec-len"></span></div>
+      <audio id="player" controls preload="metadata"></audio>
+      <div class="birds" id="birds"></div>
+      <p class="note" id="others" hidden></p>
+    </div>
+  </section>
+
+  <section id="view-life" role="tabpanel" aria-labelledby="tab-life" hidden class="stack">
+    <div class="panel">
+      <div class="rec-head"><h2>Species heard</h2><span class="small muted" id="save-where"></span></div>
+      <div class="life" id="life"></div>
+    </div>
+    <div class="panel">
+      <h2>Recordings</h2>
+      <div class="history" id="history"></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Identification by <a href="https://birdnet.cornell.edu/" target="_blank" rel="noopener">BirdNET</a> (K. Lisa Yang Center for Conservation Bioacoustics, Cornell Lab of Ornithology, and Chemnitz University of Technology). Model licensed CC BY-NC-SA 4.0, for non-commercial use.</p>
+    <p>The first identification downloads the model (26 MB, plus 30 MB when you choose a place).</p>
+  </footer>
+</div>
+
+<script>/*LITERT_BUNDLE*/</script>
+<script>
+"use strict";
+(() => {
+const $ = (id) => document.getElementById(id);
+const SR = 48000, CHUNK = 144000, MIN_CONF = 0.25, GEO_MIN = 0.03, MAX_SECONDS = 600;
+// The model files are split into parts under the 15 MB file limit. They carry a .wasm
+// extension only because the artifact service serves a fixed list of file types; the page
+// downloads them as raw bytes and joins them back into one .tflite model.
+const FILES = {
+  acoustic: { parts: ["models/acoustic-0.wasm", "models/acoustic-1.wasm"], bytes: 25932528 },
+  geo: { parts: ["models/geo-0.wasm", "models/geo-1.wasm", "models/geo-2.wasm"], bytes: 29526096 },
+  labels: "models/labels.txt",
+};
+// BirdNET also recognises these non-bird sounds; they are reported separately.
+const NOISE = new Set(["Dog", "Engine", "Environmental", "Fireworks", "Gun", "Human non-vocal",
+  "Human vocal", "Human whistle", "Noise", "Power tools", "Siren"]);
+
+// [label, latitude, longitude]: rough centres used for BirdNET's range model.
+const REGIONS = {
+  "United States": [["Alabama",32.8,-86.8],["Alaska",61.4,-150.0],["Arizona",34.3,-111.7],["Arkansas",34.9,-92.4],["California",37.2,-119.5],["Colorado",39.0,-105.5],["Connecticut",41.6,-72.7],["Delaware",39.0,-75.5],["District of Columbia",38.9,-77.0],["Florida",28.6,-82.4],["Georgia",32.7,-83.4],["Hawaii",20.8,-156.3],["Idaho",44.4,-114.6],["Illinois",40.0,-89.2],["Indiana",39.9,-86.3],["Iowa",42.1,-93.5],["Kansas",38.5,-98.4],["Kentucky",37.5,-85.3],["Louisiana",31.1,-92.0],["Maine",45.4,-69.2],["Maryland",39.0,-76.8],["Massachusetts",42.3,-71.8],["Michigan",44.3,-85.4],["Minnesota",46.3,-94.3],["Mississippi",32.7,-89.7],["Missouri",38.4,-92.5],["Montana",47.0,-109.6],["Nebraska",41.5,-99.8],["Nevada",39.3,-116.6],["New Hampshire",43.7,-71.6],["New Jersey",40.2,-74.7],["New Mexico",34.4,-106.1],["New York",42.9,-75.5],["North Carolina",35.6,-79.4],["North Dakota",47.5,-100.5],["Ohio",40.3,-82.8],["Oklahoma",35.6,-97.5],["Oregon",43.9,-120.6],["Pennsylvania",40.9,-77.8],["Rhode Island",41.7,-71.5],["South Carolina",33.9,-80.9],["South Dakota",44.4,-100.2],["Tennessee",35.9,-86.4],["Texas",31.5,-99.3],["Utah",39.3,-111.7],["Vermont",44.1,-72.7],["Virginia",37.5,-78.9],["Washington",47.4,-120.5],["West Virginia",38.6,-80.6],["Wisconsin",44.6,-89.9],["Wyoming",43.0,-107.6]],
+  "Canada": [["Alberta",53.5,-114.5],["British Columbia",49.8,-123.0],["Manitoba",50.5,-97.5],["New Brunswick",46.5,-66.2],["Newfoundland and Labrador",48.5,-56.0],["Nova Scotia",45.0,-63.0],["Ontario",44.5,-79.5],["Prince Edward Island",46.3,-63.2],["Quebec",46.5,-72.0],["Saskatchewan",51.5,-106.0],["Yukon",61.5,-135.0]],
+  "Europe": [["United Kingdom",53.0,-1.5],["Ireland",53.2,-7.9],["France",46.6,2.4],["Germany",51.1,10.4],["Netherlands",52.2,5.5],["Spain",40.2,-3.6],["Portugal",39.6,-8.0],["Italy",42.8,12.6],["Sweden",59.5,15.5],["Norway",60.5,9.5],["Poland",52.0,19.4]],
+  "Elsewhere": [["Mexico (central)",20.5,-100.0],["Costa Rica",9.9,-84.1],["Colombia (Andes)",4.6,-74.1],["Brazil (southeast)",-22.0,-45.0],["Argentina (Buenos Aires)",-34.6,-58.9],["Australia (New South Wales)",-33.0,148.0],["Australia (Victoria)",-37.5,144.5],["Australia (Queensland)",-24.0,150.0],["New Zealand",-41.3,174.0],["India",21.0,78.0],["Japan",36.2,138.3],["South Africa (Western Cape)",-33.5,19.5],["Kenya",-0.5,37.0]],
+};
+
+// ---------- small storage helpers (per-browser conveniences only) ----------
+const local = {
+  get(key, fallback) { try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} },
+};
+
+// ---------- form ----------
+const region = $("region");
+region.append(new Option("Anywhere (no location filter)", "none"));
+for (const [group, places] of Object.entries(REGIONS)) {
+  const og = document.createElement("optgroup"); og.label = group;
+  places.forEach(([name], i) => og.append(new Option(name, `${group}|${i}`)));
+  region.append(og);
+}
+region.append(new Option("Enter coordinates…", "coords"));
+const saved = local.get("birding.region", "none");
+region.value = [...region.options].some((o) => o.value === saved) ? saved : "none";
+$("date").value = new Date().toLocaleDateString("en-CA");
+const coordsSaved = local.get("birding.coords", null);
+if (coordsSaved) { $("lat").value = coordsSaved[0]; $("lon").value = coordsSaved[1]; }
+const syncRegion = () => { $("coords").hidden = region.value !== "coords"; local.set("birding.region", region.value); };
+region.addEventListener("change", syncRegion);
+syncRegion();
+
+function place() {
+  if (region.value === "none") return null;
+  if (region.value === "coords") {
+    const lat = parseFloat($("lat").value), lon = parseFloat($("lon").value);
+    if (!(Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) throw new Error("Enter a latitude between -90 and 90 and a longitude between -180 and 180, or choose a place from the list.");
+    local.set("birding.coords", [lat, lon]);
+    return { name: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, lat, lon };
+  }
+  const [group, i] = region.value.split("|");
+  const [name, lat, lon] = REGIONS[group][+i];
+  return { name, lat, lon };
+}
+// BirdNET divides the year into 48 weeks, four per month.
+function birdnetWeek(iso) {
+  const d = iso ? new Date(iso + "T12:00:00") : new Date();
+  return d.getMonth() * 4 + Math.min(4, Math.floor((d.getDate() - 1) / 7) + 1);
+}
+
+// ---------- status ----------
+function status(text, fraction, num = "") {
+  $("status").hidden = false;
+  $("status-text").textContent = text;
+  $("status-num").textContent = num;
+  $("status-bar").style.width = `${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%`;
+}
+const clearStatus = () => { $("status").hidden = true; };
+function showError(msg) { const e = $("error"); e.textContent = msg; e.hidden = !msg; }
+const mb = (n) => (n / 1048576).toFixed(0);
+
+// ---------- model loading ----------
+let runtimePromise = null, acousticPromise = null, geoPromise = null, labelsPromise = null;
+const geoCache = new Map();
+
+function runtime() {
+  runtimePromise ??= LiteRT.loadLiteRt(new URL("wasm/", document.baseURI).href);
+  return runtimePromise;
+}
+async function download(spec, label) {
+  const out = new Uint8Array(spec.bytes);
+  let got = 0;
+  for (const part of spec.parts) {
+    const resp = await fetch(part);
+    if (!resp.ok) throw new Error(`Could not download the ${label} (${resp.status}).`);
+    const reader = resp.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      out.set(value, got); got += value.length;
+      status(`Downloading the ${label} (first time only)`, got / spec.bytes, `${mb(got)} / ${mb(spec.bytes)} MB`);
+    }
+  }
+  if (got !== spec.bytes) throw new Error(`The ${label} download was incomplete. Check your connection and try again.`);
+  return out;
+}
+function acousticModel() {
+  acousticPromise ??= (async () => {
+    await runtime();
+    const bytes = await download(FILES.acoustic, "bird sound model");
+    status("Preparing the model", 1);
+    return LiteRT.loadAndCompile(bytes, { accelerator: "wasm" });
+  })();
+  acousticPromise.catch(() => { acousticPromise = null; });
+  return acousticPromise;
+}
+function geoModel() {
+  geoPromise ??= (async () => {
+    await runtime();
+    const bytes = await download(FILES.geo, "location model");
+    return LiteRT.loadAndCompile(bytes, { accelerator: "wasm" });
+  })();
+  geoPromise.catch(() => { geoPromise = null; });
+  return geoPromise;
+}
+function labels() {
+  labelsPromise ??= fetch(FILES.labels).then((r) => {
+    if (!r.ok) throw new Error("Could not download the species names.");
+    return r.text();
+  }).then((t) => t.trim().split("\n").map((line) => {
+    const [sci, common] = line.split("_");
+    return { sci, common: common || sci };
+  }));
+  labelsPromise.catch(() => { labelsPromise = null; });
+  return labelsPromise;
+}
+async function runModel(model, data, shape) {
+  const input = new LiteRT.Tensor(data, shape);
+  try {
+    const outputs = await model.run(input);
+    const out = outputs[0];
+    const values = Float32Array.from(await out.data());
+    outputs.forEach((t) => { try { if (!t.deleted) t.delete(); } catch {} });
+    return values;
+  } finally {
+    try { if (!input.deleted) input.delete(); } catch {}
+  }
+}
+async function speciesNear(p, week) {
+  const key = `${p.lat.toFixed(2)},${p.lon.toFixed(2)},${week}`;
+  if (!geoCache.has(key)) {
+    const geo = await geoModel();
+    const probs = await runModel(geo, new Float32Array([p.lat, p.lon, week]), [1, 3]);
+    const allowed = new Set();
+    probs.forEach((v, i) => { if (v >= GEO_MIN) allowed.add(i); });
+    geoCache.set(key, allowed);
+  }
+  return geoCache.get(key);
+}
+
+// ---------- audio ----------
+async function decode(file) {
+  const buf = await file.arrayBuffer();
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  const ctx = new Ctx();
+  let audio;
+  try {
+    audio = await new Promise((resolve, reject) => {
+      const p = ctx.decodeAudioData(buf, resolve, reject);
+      if (p && p.then) p.then(resolve, reject);
+    });
+  } catch {
+    throw new Error("This file couldn't be read as audio. Try an .m4a Voice Memo, .mp3 or .wav file.");
+  } finally {
+    try { ctx.close(); } catch {}
+  }
+  if (audio.duration > MAX_SECONDS) throw new Error("Recordings are limited to 10 minutes. Trim it in Voice Memos and try again.");
+  const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(audio.duration * SR)), SR);
+  const src = off.createBufferSource();
+  src.buffer = audio; src.connect(off.destination); src.start();
+  const rendered = await off.startRendering();
+  return rendered.getChannelData(0);
+}
+
+// ---------- spectrogram ----------
+function fft(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const a = i + k, b = a + len / 2;
+        const tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+        const nr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = nr;
+      }
+    }
+  }
+}
+function hexRgb(hex) { const h = hex.trim().replace("#", ""); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); }
+let lastPcm = null;
+function drawSpectrogram(pcm) {
+  lastPcm = pcm;
+  const canvas = $("spec");
+  const w = Math.max(200, Math.round(canvas.clientWidth * Math.min(2, devicePixelRatio || 1)));
+  const h = 160, N = 1024, bins = Math.round(N / 2 * 15000 / (SR / 2));
+  canvas.width = w; canvas.height = h;
+  const g = canvas.getContext("2d");
+  const css = getComputedStyle(document.documentElement);
+  const lo = hexRgb(css.getPropertyValue("--spec-low")), hi = hexRgb(css.getPropertyValue("--spec-high"));
+  const img = g.createImageData(w, h);
+  const re = new Float32Array(N), im = new Float32Array(N), win = new Float32Array(N);
+  for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (N - 1));
+  const cols = [];
+  let peak = -Infinity;
+  for (let x = 0; x < w; x++) {
+    const start = Math.floor(x / w * Math.max(0, pcm.length - N));
+    for (let i = 0; i < N; i++) { re[i] = (pcm[start + i] || 0) * win[i]; im[i] = 0; }
+    fft(re, im);
+    const col = new Float32Array(h);
+    for (let y = 0; y < h; y++) {
+      const b0 = Math.floor((h - 1 - y) / h * bins), b1 = Math.max(b0 + 1, Math.floor((h - y) / h * bins));
+      let m = 0;
+      for (let b = b0; b < b1; b++) m = Math.max(m, re[b] * re[b] + im[b] * im[b]);
+      col[y] = 10 * Math.log10(m + 1e-12);
+      if (col[y] > peak) peak = col[y];
+    }
+    cols.push(col);
+  }
+  const floor = peak - 70;
+  for (let x = 0; x < w; x++) for (let y = 0; y < h; y++) {
+    const t = Math.max(0, Math.min(1, (cols[x][y] - floor) / 70)) ** 1.6;
+    const o = (y * w + x) * 4;
+    for (let c = 0; c < 3; c++) img.data[o + c] = lo[c] + (hi[c] - lo[c]) * t;
+    img.data[o + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+}
+const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+function showBand(d, duration) {
+  const band = $("spec-band");
+  if (!d) { band.hidden = true; return; }
+  band.style.left = `${d.start / duration * 100}%`;
+  band.style.width = `${Math.max(0.5, (Math.min(d.end, duration) - d.start) / duration * 100)}%`;
+  band.hidden = false;
+}
+
+// ---------- identification ----------
+let busy = false, currentUrl = null;
+$("file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file || busy) return;
+  busy = true;
+  $("pick").setAttribute("aria-disabled", "true");
+  showError("");
+  try {
+    const where = place();
+    const date = $("date").value || null;
+    status("Reading the recording", 0.05);
+    const [pcm] = await Promise.all([decode(file), labels()]);
+    const species = await labels();
+    const model = await acousticModel();
+    const allowed = where ? await speciesNear(where, birdnetWeek(date)) : null;
+
+    const duration = pcm.length / SR;
+    const n = Math.max(1, Math.ceil(pcm.length / CHUNK));
+    const best = new Map();
+    for (let c = 0; c < n; c++) {
+      status("Listening for birds", c / n, `clip ${c + 1} of ${n}`);
+      const chunk = new Float32Array(CHUNK);
+      chunk.set(pcm.subarray(c * CHUNK, (c + 1) * CHUNK));
+      const logits = await runModel(model, chunk, [1, CHUNK]);
+      for (let i = 0; i < logits.length; i++) {
+        const conf = 1 / (1 + Math.exp(-logits[i]));
+        if (conf < MIN_CONF) continue;
+        const s = species[i];
+        const noise = NOISE.has(s.sci);
+        if (!noise && allowed && !allowed.has(i)) continue;
+        const prev = best.get(i);
+        const hit = { i, sci: s.sci, common: s.common, noise, conf, start: c * 3, end: Math.min(duration, c * 3 + 3), clips: (prev?.clips || 0) + 1 };
+        best.set(i, !prev || conf > prev.conf ? hit : { ...prev, clips: hit.clips });
+      }
+      if (c % 4 === 3) await new Promise((r) => setTimeout(r));
+    }
+    clearStatus();
+    const all = [...best.values()].sort((a, b) => b.conf - a.conf);
+    const birds = all.filter((d) => !d.noise), others = all.filter((d) => d.noise).map((d) => d.common.toLowerCase());
+    showResult(file, pcm, duration, where, date, birds, others);
+    await saveEntry({ file: file.name, place: where?.name || "", date: date || "", duration: Math.round(duration),
+      birds: birds.slice(0, 12).map((d) => ({ sci: d.sci, common: d.common, conf: Math.round(d.conf * 1000) / 1000 })), others });
+  } catch (err) {
+    clearStatus();
+    console.error(err);
+    showError(err?.message || "Something went wrong while identifying the recording.");
+  } finally {
+    busy = false;
+    $("pick").removeAttribute("aria-disabled");
+  }
+});
+
+function showResult(file, pcm, duration, where, date, birds, others) {
+  $("result").hidden = false;
+  $("rec-name").textContent = file.name.replace(/\.[^.]+$/, "") || "Recording";
+  $("rec-meta").textContent = [where?.name, date].filter(Boolean).join(" · ");
+  $("rec-len").textContent = fmt(duration);
+  if (currentUrl) URL.revokeObjectURL(currentUrl);
+  currentUrl = URL.createObjectURL(file);
+  $("player").src = currentUrl;
+  drawSpectrogram(pcm);
+  const list = $("birds");
+  list.replaceChildren();
+  if (!birds.length) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = where
+      ? `No birds recognised. Try a closer recording with less wind, or set the place to "Anywhere" in case it's an unusual visitor.`
+      : "No birds recognised. Try a closer recording with less wind and traffic noise.";
+    list.append(p);
+  }
+  birds.forEach((d, idx) => {
+    const b = document.createElement("button");
+    b.className = "bird"; b.type = "button";
+    b.setAttribute("aria-pressed", idx === 0 ? "true" : "false");
+    const name = document.createElement("div");
+    const h = document.createElement("h3"); h.textContent = d.common;
+    const sci = document.createElement("div"); sci.className = "sci"; sci.textContent = d.sci;
+    name.append(h, sci);
+    const pct = document.createElement("span"); pct.className = "pct"; pct.textContent = `${Math.round(d.conf * 100)}%`;
+    const bar = document.createElement("div"); bar.className = "bar";
+    const fill = document.createElement("i"); fill.style.width = `${Math.round(d.conf * 100)}%`; bar.append(fill);
+    const when = document.createElement("div"); when.className = "when";
+    when.textContent = `Clearest at ${fmt(d.start)}–${fmt(d.end)}${d.clips > 1 ? ` · heard in ${d.clips} clips` : ""} · tap to play`;
+    b.append(name, pct, bar, when);
+    b.addEventListener("click", () => {
+      list.querySelectorAll(".bird").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+      showBand(d, duration);
+      const player = $("player");
+      player.currentTime = d.start;
+      player.play().catch(() => {});
+    });
+    list.append(b);
+  });
+  showBand(birds[0], duration);
+  $("others").hidden = !others.length;
+  $("others").textContent = others.length ? `Also heard (not birds): ${others.join(", ")}.` : "";
+  $("result").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+}
+
+$("spec").addEventListener("click", (e) => {
+  const player = $("player");
+  if (!player.duration) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  player.currentTime = (e.clientX - r.left) / r.width * player.duration;
+  player.play().catch(() => {});
+});
+$("player").addEventListener("timeupdate", () => {
+  const p = $("player"), head = $("spec-head");
+  if (!p.duration) { head.hidden = true; return; }
+  head.hidden = false;
+  head.style.left = `${p.currentTime / p.duration * 100}%`;
+});
+let resizeTimer;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => lastPcm && !$("result").hidden && drawSpectrogram(lastPcm), 200); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => lastPcm && drawSpectrogram(lastPcm));
+new MutationObserver(() => lastPcm && drawSpectrogram(lastPcm)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+// ---------- history: saved to the viewer's own private space, else this browser ----------
+let entries = [], store = null;
+const LOCAL_KEY = "birding.entries";
+
+function render() {
+  const sorted = [...entries].sort((a, b) => (b.at || "").localeCompare(a.at || ""));
+  const species = new Map();
+  for (const e of sorted) for (const b of e.birds || []) {
+    const s = species.get(b.sci) || { common: b.common, sci: b.sci, times: 0, first: e.at, best: 0 };
+    s.times += 1; s.best = Math.max(s.best, b.conf || 0);
+    if ((e.at || "") < (s.first || "")) s.first = e.at;
+    species.set(b.sci, s);
+  }
+  $("life-count").textContent = species.size ? String(species.size) : "";
+  const life = $("life");
+  life.replaceChildren();
+  if (!species.size) {
+    const p = document.createElement("p"); p.className = "empty";
+    p.textContent = "Birds you identify will be listed here, with the date you first heard each one.";
+    life.append(p);
+  }
+  [...species.values()].sort((a, b) => (b.first || "").localeCompare(a.first || "")).forEach((s) => {
+    const row = document.createElement("div"); row.className = "life-row";
+    const left = document.createElement("div");
+    const h = document.createElement("h3"); h.textContent = s.common;
+    const sci = document.createElement("div"); sci.className = "sci"; sci.textContent = s.sci;
+    left.append(h, sci);
+    const meta = document.createElement("div"); meta.className = "meta";
+    meta.textContent = `First heard ${new Date(s.first).toLocaleDateString()}`;
+    const times = document.createElement("div"); times.className = "data"; times.textContent = `${s.times} recording${s.times === 1 ? "" : "s"}`;
+    meta.append(document.createElement("br"), times);
+    row.append(left, meta);
+    life.append(row);
+  });
+
+  const hist = $("history");
+  hist.replaceChildren();
+  if (!sorted.length) {
+    const p = document.createElement("p"); p.className = "empty";
+    p.textContent = "Each recording you identify is listed here. The audio itself stays on your device and isn't saved.";
+    hist.append(p);
+  }
+  sorted.forEach((e) => {
+    const card = document.createElement("div"); card.className = "entry";
+    const top = document.createElement("div"); top.className = "entry-top";
+    const title = document.createElement("strong"); title.textContent = e.file || "Recording";
+    const when = document.createElement("span"); when.className = "small muted";
+    when.textContent = [new Date(e.at).toLocaleString(), e.place].filter(Boolean).join(" · ");
+    top.append(title, when);
+    const body = document.createElement("p"); body.className = "small";
+    body.textContent = (e.birds || []).length
+      ? e.birds.map((b) => `${b.common} ${Math.round(b.conf * 100)}%`).join(" · ")
+      : "No birds recognised";
+    const del = document.createElement("button"); del.className = "linkish"; del.type = "button"; del.textContent = "Delete";
+    const actions = document.createElement("div"); actions.append(del);
+    del.addEventListener("click", () => {
+      const ask = document.createElement("div"); ask.className = "confirm";
+      const q = document.createElement("span"); q.textContent = "Delete this recording from your list?";
+      const yes = document.createElement("button"); yes.className = "btn-quiet"; yes.type = "button"; yes.textContent = "Delete";
+      yes.style.color = "var(--danger)";
+      const no = document.createElement("button"); no.className = "btn-quiet"; no.type = "button"; no.textContent = "Keep";
+      no.addEventListener("click", () => actions.replaceChildren(del));
+      yes.addEventListener("click", () => removeEntry(e.id));
+      ask.append(q, yes, no);
+      actions.replaceChildren(ask);
+    });
+    card.append(top, body, actions);
+    hist.append(card);
+  });
+}
+
+async function saveEntry(data) {
+  const entry = { ...data, at: new Date().toISOString() };
+  if (store) {
+    try { await store.collection.add(entry); return; } catch (err) { console.warn("save failed, keeping it in this browser", err); }
+  }
+  entry.id = `local-${Date.now()}`;
+  entries.push(entry);
+  local.set(LOCAL_KEY, entries.filter((x) => String(x.id).startsWith("local-")));
+  render();
+}
+async function removeEntry(id) {
+  if (store && !String(id).startsWith("local-")) {
+    try { await store.collection.doc(id).delete(); } catch (err) { showError("Couldn't delete that entry. Try again."); }
+    return;
+  }
+  entries = entries.filter((x) => x.id !== id);
+  local.set(LOCAL_KEY, entries.filter((x) => String(x.id).startsWith("local-")));
+  render();
+}
+
+entries = local.get(LOCAL_KEY, []);
+$("save-where").textContent = "Saved in this browser";
+render();
+
+(async () => {
+  try {
+    const [db, user] = await Promise.all([window.claude?.use?.("db"), window.claude?.use?.("user")]);
+    const uid = user ? await user.id() : null;
+    if (!db || !uid) return;
+    const collection = db.collection("data/users/" + uid);
+    store = { collection };
+    $("save-where").textContent = "Saved to your account";
+    const localOnly = entries.filter((x) => String(x.id).startsWith("local-"));
+    collection.orderBy("at", "desc").limit(500).onSnapshot((snap) => {
+      entries = [...snap.docs.map((d) => ({ id: d.id, ...d.data() })), ...localOnly];
+      render();
+    }, () => { store = null; $("save-where").textContent = "Saved in this browser"; });
+  } catch (err) {
+    console.warn("account storage unavailable", err);
+  }
+})();
+
+// ---------- tabs ----------
+for (const tab of document.querySelectorAll(".tab")) {
+  tab.addEventListener("click", () => {
+    for (const t of document.querySelectorAll(".tab")) {
+      const on = t === tab;
+      t.setAttribute("aria-selected", String(on));
+      $(t.getAttribute("aria-controls")).hidden = !on;
+    }
+  });
+}
+})();
+</script>
